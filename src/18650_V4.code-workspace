@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "../../18650_V3"
+		},
+		{
+			"name": "18650_V4",
+			"path": ".."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"cmath": "cpp",
+			"chrono": "cpp"
+		}
+	}
+}
