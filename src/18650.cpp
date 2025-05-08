@@ -1696,4 +1696,4 @@ float readVCC() {
     // Calculate VCC: VCC = (VREF * 1024) / ADC_Reading
     float vcc = (VREF * 1024.0) / adcAverage;
     return vcc;
-} //
+} 
