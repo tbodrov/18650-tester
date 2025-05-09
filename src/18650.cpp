@@ -344,6 +344,10 @@ void displayMainStatusPage() {
     display.println(F(" V"));
     };
 
+    display.print(F("Vref:"));
+    display.print(readVCC(), 2);
+    display.println(F(" V"));
+
     display.display();
 }
 
