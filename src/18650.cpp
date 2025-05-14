@@ -17,12 +17,12 @@ constexpr uint8_t BAT_PIN_1 = A1; // Analog pin connected to battery voltage
 constexpr uint8_t BAT_PIN_2 = A2; // Analog pin connected to the second battery voltage
 constexpr uint8_t VREF_PIN = A4; // Analog pin connected to LM385
 
-constexpr uint8_t BUTTON1_PIN = 6; // Button to cycle through the menu
+constexpr uint8_t BUTTON1_PIN = 8; // Button to cycle through the menu
 constexpr uint8_t BUTTON2_PIN = 7; // Additional button
-constexpr uint8_t BUTTON3_PIN = 8; // Additional button
+constexpr uint8_t BUTTON3_PIN = 6; // Additional button
 constexpr uint8_t CHARGING_PIN = 2; // Pin to enable on the second page
-constexpr uint8_t PWM1_PIN = 3; // Define digital pin D3 as PWM1
-constexpr uint8_t PWM2_PIN = 4; // Define digital pin D4 as PWM2
+constexpr uint8_t PWM1_PIN = 4; // Define digital pin D3 as PWM1
+constexpr uint8_t PWM2_PIN = 3; // Define digital pin D4 as PWM2
 constexpr uint8_t LED_RUNNING_PIN = 0; // Define digital pin D0 as LED_RUNNING
 constexpr uint8_t LED_FINISHED_PIN = 1; // Define digital pin D1 as LED_FINISHED
 constexpr uint8_t BUZZER_PIN = 5; // Define digital pin D5 as BUZZER
@@ -81,7 +81,7 @@ const float R2 = 100000.0;  // 100k ohms
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // Variables
-float currentPWMValue = 0.0; // Rename pwmValue to currentPWMValue
+float currentPWMValue = 0.0; 
 float measuredVCC = 0.0;
 int currentPage = 0; // Variable to track the current page
 int selectedCurrent = 0; // Initial current in mA
@@ -129,6 +129,41 @@ void displayResultsPage();
 void displayCombinedPlotPage();
 void displayInternalResistancePage(); // Prototype for IR test page
 void displayMenuPage(int page); // Prototype for displayMenuPage
+
+int getPWM1Value(int current) {
+    switch (current) {
+        case 0:   return 0;
+        case 100: return 20;
+        case 200: return 40;
+        case 300: return 60;
+        case 400: return 80;
+        case 500: return 100;
+        case 600: return 120;
+        case 700: return 140;
+        case 800: return 160;
+        case 900: return 180;
+        case 1000: return 200;
+        default:  return 0;
+    }
+}
+
+// Separate PWM value selection for PWM2
+int getPWM2Value(int current) {
+    switch (current) {
+        case 0:   return 0;
+        case 100: return 10;
+        case 200: return 20;
+        case 300: return 30;
+        case 400: return 40;
+        case 500: return 50;
+        case 600: return 60;
+        case 700: return 70;
+        case 800: return 80;
+        case 900: return 90;
+        case 1000: return 100;
+        default:  return 0;
+    }
+}
 
 void setup() {
     Serial.begin(115200);
@@ -196,7 +231,7 @@ void loop() {
     // Debounce logic for BUTTON1_PIN using millis()
     bool button1CurrentState = digitalRead(BUTTON1_PIN);
     if (button1CurrentState == HIGH && button1LastState == LOW && (now - lastDebounceTime > 200)) {
-        currentPage = (currentPage + 1) % 7;
+        currentPage = (currentPage + 1) % 6;
         lastDebounceTime = now;
     }
     button1LastState = button1CurrentState;
@@ -255,9 +290,6 @@ void displayMenuPage(int page) {
             displayInternalResistancePage(); // New IR test page
             break;
         case 5:
-            displayResultsPage();
-            break;
-        case 6:
             displayCombinedPlotPage(); // Combined charge/discharge plot
             break;
         default:
@@ -344,6 +376,8 @@ void displayMainStatusPage() {
     display.println(F(" V"));
     };
 
+    display.println(F(""));
+
     display.print(F("Vref:"));
     display.print(readVCC(), 2);
     display.println(F(" V"));
@@ -362,9 +396,23 @@ void displayChargingPage() {
     static bool button1LastState = LOW;
     display.setCursor(0, 0);
     display.println(F("Charge test"));
-    display.println(F(""));
     display.println(F("Press Button 2"));
     display.println(F("to Start"));
+
+    display.println(F("Results:"));
+                    if (chargeLogCount > 0) {
+                        display.print(F("T: "));
+                        display.print(chargeLogTime[chargeLogCount - 1]);
+                        display.println(F("s"));
+                        display.print(F("V1:"));
+                        display.print(chargeLogV1[chargeLogCount - 1], 2);
+                        display.print(F("V V2:"));
+                        display.print(chargeLogV2[chargeLogCount - 1], 2);
+                        display.println(F("V"));
+                    } else {
+                        display.println(F("No Charge Data"));
+                    }
+
     display.display();
 
     // Wait for BUTTON2_PIN to be pressed
@@ -381,6 +429,7 @@ void displayChargingPage() {
     display.setCursor(0, 0);
     display.println(F("Charging..."));
     display.display();
+    digitalWrite(LED_FINISHED_PIN, LOW);
     digitalWrite(LED_RUNNING_PIN, HIGH); // Turn on LED_RUNNING
     digitalWrite(CHARGING_PIN, HIGH);   // Enable CHARGING_PIN
     chargingStartTime = millis();
@@ -406,9 +455,9 @@ void displayChargingPage() {
             digitalWrite(LED_RUNNING_PIN, LOW);// Turn off LED_RUNNING
             digitalWrite(LED_FINISHED_PIN, HIGH);// Turn on LED_FINISHED
             display.display();
-            digitalWrite(BUZZER_PIN, HIGH); // Activate buzzer
+            analogWrite(BUZZER_PIN, 128); // 50% duty cycle (adjust for volume)
             delay(2000);
-            digitalWrite(BUZZER_PIN, LOW);  // Deactivate buzzer
+            analogWrite(BUZZER_PIN, 0);   // Turn off buzzer
             delay(3000);
             break;
         }
@@ -543,7 +592,7 @@ void displayDischargingPage() {
     display.println(F("Press Button 3 to Cycle Options"));
     display.println(F("Press Button 2 to Activate"));
 
-    enum SelectionMode { SELECT_PWM1, SELECT_PWM2, START_PROCESS };
+    enum SelectionMode { SELECT_PWM1, SELECT_PWM2, START_PROCESS, RESULTS };
     static SelectionMode currentMode = SELECT_PWM1; // Initial mode
     bool button3LastState = LOW; // Track the last state of BUTTON3_PIN
     bool button2LastState = LOW; // Track the last state of BUTTON2_PIN
@@ -556,7 +605,7 @@ void displayDischargingPage() {
         // Handle button 3 to cycle through selection modes
         bool button3CurrentState = digitalRead(BUTTON3_PIN);
         if (button3CurrentState == HIGH && button3LastState == LOW) {
-            currentMode = static_cast<SelectionMode>((currentMode + 1) % 3); // Cycle through modes
+            currentMode = static_cast<SelectionMode>((currentMode + 1) % 4); // Cycle through modes
         }
         button3LastState = button3CurrentState;
 
@@ -582,6 +631,27 @@ void displayDischargingPage() {
                 display.println(F("Press Button 2"));
                 display.println(F("to Start"));
                 break;
+            case RESULTS:
+                 display.println(F("Results:"));
+                    if (lastDischargeTime > 0) {
+                        display.print(F("T: "));
+                        display.print(lastDischargeTime, 2);
+                        display.println(F("s"));
+                        display.print(F("C1:"));
+                        display.print(lastDischargeCapacity1, 2);
+                        display.print(F("mAh C2:"));
+                        display.print(lastDischargeCapacity2, 2);
+                        display.println(F("mAh"));
+                        display.print(F("V1:"));
+                        display.print(lastDischargeVoltage1, 2);
+                        display.print(F("V"));
+                        display.print(F(" V2:"));
+                        display.print(lastDischargeVoltage2, 2);
+                        display.println(F("V"));
+                    } else {
+                        display.println(F("No Discharge Data"));
+                    }
+                break;
         }
         display.display();
 
@@ -601,10 +671,12 @@ void displayDischargingPage() {
                 dischargeLogCount = 0;
                 display.clearDisplay();
                 display.println(F("Discharging..."));
+                digitalWrite(LED_FINISHED_PIN, LOW);
                 digitalWrite(LED_RUNNING_PIN, HIGH); // Turn on LED_RUNNING
 
-                int pwmValue1 = map(selectedCurrent, 0, 1000, 0, 255); // Map current to PWM range
-                int pwmValue2 = map(selectedCurrentPWM2, 0, 1000, 0, 255);
+                // Use getPWMValue instead of map
+                int pwmValue1 = getPWM1Value(selectedCurrent);
+                int pwmValue2 = getPWM2Value(selectedCurrentPWM2);
                 analogWrite(PWM1_PIN, pwmValue1);
                 analogWrite(PWM2_PIN, pwmValue2);
 
@@ -633,9 +705,9 @@ void displayDischargingPage() {
                         digitalWrite(LED_RUNNING_PIN, LOW);// Turn off LED_RUNNING
                         digitalWrite(LED_FINISHED_PIN, HIGH);// Turn on LED_FINISHED
                         display.display();
-                        digitalWrite(BUZZER_PIN, HIGH); // Activate buzzer
+                        analogWrite(BUZZER_PIN, 128); // 50% duty cycle (adjust for volume)
                         delay(2000);
-                        digitalWrite(BUZZER_PIN, LOW);  // Deactivate buzzer
+                        analogWrite(BUZZER_PIN, 0);   // Turn off buzzer
                         delay(3000);
                         break;
                     }
@@ -871,7 +943,7 @@ void displayDischargingPage() {
 void displayCombinedProcessPage() {
     static bool button1LastState = LOW;
     // --- Current selection UI (identical to case 2) ---
-    enum SelectionMode { SELECT_PWM1, SELECT_PWM2, START_PROCESS };
+    enum SelectionMode { SELECT_PWM1, SELECT_PWM2, START_PROCESS, LCharge_Results, LDischarge_Results };
     static SelectionMode currentMode = SELECT_PWM1;
     bool button3LastState = LOW;
     bool button2LastState = LOW;
@@ -881,7 +953,7 @@ void displayCombinedProcessPage() {
         // Handle button 3 to cycle through selection modes
         bool button3CurrentState = digitalRead(BUTTON3_PIN);
         if (button3CurrentState == HIGH && button3LastState == LOW) {
-            currentMode = static_cast<SelectionMode>((currentMode + 1) % 3);
+            currentMode = static_cast<SelectionMode>((currentMode + 1) % 5);
         }
         button3LastState = button3CurrentState;
 
@@ -905,6 +977,42 @@ void displayCombinedProcessPage() {
             case START_PROCESS:
                 display.println(F("Mode: Start Process"));
                 display.println(F("Press Button 2 to Start"));
+                break;
+             case LCharge_Results:
+                display.println(F("L Charge Results:"));
+                    if (chargeLogCount > 0) {
+                        display.print(F("T: "));
+                        display.print(chargeLogTime[chargeLogCount - 1]);
+                        display.println(F("s"));
+                        display.print(F("V1:"));
+                        display.print(chargeLogV1[chargeLogCount - 1], 2);
+                        display.print(F("V V2:"));
+                        display.print(chargeLogV2[chargeLogCount - 1], 2);
+                        display.println(F("V"));
+                    } else {
+                        display.println(F("No Charge Data"));
+                    }
+                break;
+            case LDischarge_Results:
+                 display.println(F("L Discharge Results:"));
+                    if (lastDischargeTime > 0) {
+                        display.print(F("T: "));
+                        display.print(lastDischargeTime, 2);
+                        display.println(F("s"));
+                        display.print(F("C1:"));
+                        display.print(lastDischargeCapacity1, 2);
+                        display.print(F("mAh C2:"));
+                        display.print(lastDischargeCapacity2, 2);
+                        display.println(F("mAh"));
+                        display.print(F("V1:"));
+                        display.print(lastDischargeVoltage1, 2);
+                        display.print(F("V"));
+                        display.print(F(" V2:"));
+                        display.print(lastDischargeVoltage2, 2);
+                        display.println(F("V"));
+                    } else {
+                        display.println(F("No Discharge Data"));
+                    }
                 break;
         }
         display.display();
@@ -937,6 +1045,7 @@ void displayCombinedProcessPage() {
     display.println(F("Charging..."));
     display.display();
     digitalWrite(LED_RUNNING_PIN, HIGH);
+    digitalWrite(LED_FINISHED_PIN, LOW);
     digitalWrite(CHARGING_PIN, HIGH);
     unsigned long chargingStartTime = millis();
     unsigned long elapsedTime = 0;
@@ -964,9 +1073,9 @@ void displayCombinedProcessPage() {
             digitalWrite(LED_RUNNING_PIN, LOW);
             digitalWrite(LED_FINISHED_PIN, HIGH);
             display.display();
-            digitalWrite(BUZZER_PIN, HIGH); // Activate buzzer
+            analogWrite(BUZZER_PIN, 128); // 50% duty cycle (adjust for volume)
             delay(2000);
-            digitalWrite(BUZZER_PIN, LOW);  // Deactivate buzzer
+            analogWrite(BUZZER_PIN, 0);   // Turn off buzzer
             delay(3000);
             return;
         }
@@ -1119,8 +1228,10 @@ while (millis() - restStart < restDuration) {
     display.setCursor(0, 0);
     display.println(F("Discharging..."));
     display.display();
-    int pwmValue1 = map(selectedCurrent, 100, 1000, 25, 255);
-    int pwmValue2 = map(selectedCurrentPWM2, 100, 1000, 25, 255);
+    // Use getPWMValue instead of map
+    int pwmValue1 = getPWM1Value(selectedCurrent);
+    int pwmValue2 = getPWM2Value(selectedCurrentPWM2);
+    digitalWrite(LED_FINISHED_PIN, LOW);
     analogWrite(PWM1_PIN, pwmValue1);
     analogWrite(PWM2_PIN, pwmValue2);
     unsigned long dischargingStartTime = millis();
@@ -1149,9 +1260,9 @@ while (millis() - restStart < restDuration) {
             digitalWrite(LED_RUNNING_PIN, LOW);
             digitalWrite(LED_FINISHED_PIN, HIGH);
             display.display();
-            digitalWrite(BUZZER_PIN, HIGH); // Activate buzzer
+            analogWrite(BUZZER_PIN, 128); // 50% duty cycle (adjust for volume)
             delay(2000);
-            digitalWrite(BUZZER_PIN, LOW);  // Deactivate buzzer
+            analogWrite(BUZZER_PIN, 0);   // Turn off buzzer
             delay(3000);
             break;
         }
@@ -1372,7 +1483,8 @@ void displayInternalResistancePage() {
 
     // --- Internal Resistance Measurement for PWM1 ---
     float voltageNoLoad1 = 0, voltageLoad1 = 0, ir1 = 0;
-    int pwmValue1 = map(irSelectedCurrent, 100, 1000, 25, 255);
+    // Use getPWMValue for IR test
+    int pwmValue1 = getPWM1Value(selectedCurrent);
     analogWrite(PWM1_PIN, 0);
     delay(1000);
     voltageNoLoad1 = measureBatteryVoltage1();
@@ -1389,7 +1501,7 @@ void displayInternalResistancePage() {
 
     // --- Internal Resistance Measurement for PWM2 ---
     float voltageNoLoad2 = 0, voltageLoad2 = 0, ir2 = 0;
-    int pwmValue2 = map(irSelectedCurrentPWM2, 100, 1000, 25, 255);
+    int pwmValue2 = getPWM2Value(selectedCurrentPWM2);
     analogWrite(PWM2_PIN, 0);
     delay(1000);
     voltageNoLoad2 = measureBatteryVoltage2();
@@ -1443,67 +1555,8 @@ void displayInternalResistancePage() {
 }
 
 
-//========================================= RESULTS PAGE ============================================
-void displayResultsPage() {
-    static bool button1LastState = LOW;
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
+//========================================= PLOT PAGE ============================================
 
-    // Display last charge data
-    display.println(F("L Charge Results:"));
-    if (chargeLogCount > 0) {
-        display.print(F("T: "));
-        display.print(chargeLogTime[chargeLogCount - 1]);
-        display.println(F("s"));
-        display.print(F("V1:"));
-        display.print(chargeLogV1[chargeLogCount - 1], 2);
-        display.print(F("V V2:"));
-        display.print(chargeLogV2[chargeLogCount - 1], 2);
-        display.println(F("V"));
-    } else {
-        display.println(F("No Charge Data Available"));
-    }
-
-    // Display last discharge data (latest voltages)
-    display.println();
-    display.println(F("L Discharge Results:"));
-    if (lastDischargeTime > 0) {
-        display.print(F("T: "));
-        display.print(lastDischargeTime, 2);
-        display.println(F("s"));
-        display.print(F("C1:"));
-        display.print(lastDischargeCapacity1, 2);
-        display.print(F("mAh C2:"));
-        display.print(lastDischargeCapacity2, 2);
-        display.println(F("mAh"));
-        display.print(F("V1:"));
-        display.print(lastDischargeVoltage1, 2);
-        display.print(F("V"));
-        display.print(F(" V2:"));
-        display.print(lastDischargeVoltage2, 2);
-        display.println(F("V"));
-    } else {
-        display.println(F("No Discharge Data Available"));
-    }
-
-    display.println();
-
-    display.display();
-
-    // --- Add page cycling logic for case 4 ---
-    unsigned long startTime = millis();
-    while (millis() - startTime < 5000) {
-        bool button1CurrentState = digitalRead(BUTTON1_PIN);
-        if (button1CurrentState == HIGH && !button1LastState) {
-            button1LastState = button1CurrentState;
-            break;
-        }
-        button1LastState = button1CurrentState;
-        delay(10);
-    }
-}
 
 void displayCombinedPlotPage() {
     display.clearDisplay();
@@ -1700,4 +1753,4 @@ float readVCC() {
     // Calculate VCC: VCC = (VREF * 1024) / ADC_Reading
     float vcc = (VREF * 1024.0) / adcAverage;
     return vcc;
-} 
+}
